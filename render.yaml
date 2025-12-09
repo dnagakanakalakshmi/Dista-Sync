@@ -3,7 +3,6 @@ services:
   - type: web
     name: dista-sync-api
     env: node
-    plan: free
     buildCommand: cd server && npm install
     startCommand: cd server && npm start
     envVars:
@@ -19,7 +18,6 @@ services:
   - type: web
     name: dista-sync-client
     env: static
-    plan: free
     buildCommand: cd client && npm install && npm run build
     staticPublishPath: client/dist
     envVars:
