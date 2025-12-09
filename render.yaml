@@ -16,7 +16,7 @@ services:
 
   # Frontend Static Site
   - type: web
-    name: dista-sync-client
+    name: dista-sync
     env: static
     buildCommand: npm install --prefix client && npm run build --prefix client
     staticPublishPath: ./client/dist
