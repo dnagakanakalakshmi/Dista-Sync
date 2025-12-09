@@ -1,12 +1,11 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
-import { useMemo } from 'react';
 import LoginPage from './pages/LoginPage';
 import HomePage from './pages/HomePage';
 import OrdersPage from './pages/OrdersPage';
 import ProductsPage from './pages/ProductsPage';
 import InventoryPage from './pages/InventoryPage';
-import { AuthProvider } from './context/AuthContext';
+import { AuthProvider, useAuth } from './context/AuthContext';
 import './App.css';
 
 const theme = createTheme({
@@ -15,6 +14,16 @@ const theme = createTheme({
     primary: { main: '#1976d2' },
   },
 });
+
+function RootRedirect() {
+  const { user, isLoading } = useAuth();
+  
+  if (isLoading) {
+    return null;
+  }
+  
+  return <Navigate to={user ? "/home" : "/login"} replace />;
+}
 
 function App() {
   return (
@@ -27,7 +36,7 @@ function App() {
             <Route path="/orders" element={<OrdersPage />} />
             <Route path="/products" element={<ProductsPage />} />
             <Route path="/inventory" element={<InventoryPage />} />
-            <Route path="/" element={<Navigate to="/login" replace />} />
+            <Route path="/" element={<RootRedirect />} />
           </Routes>
         </BrowserRouter>
       </AuthProvider>
