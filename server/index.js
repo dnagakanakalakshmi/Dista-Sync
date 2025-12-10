@@ -410,13 +410,25 @@ app.get('/api/data', async (req, res) => {
       return res.status(400).json({ message: 'Email is required' });
     }
 
-    let store = storeQuery;
-    if (!store) {
-      const user = await User.findOne({ email });
-      if (!user) {
-        return res.status(404).json({ message: 'User not found for this email' });
-      }
-      store = user.store;
+    // Check if user is registered
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ message: 'User not found. Please register first.' });
+    }
+
+    let store = storeQuery || user.store;
+
+    // Check if the user's email is onboarded in the Shopify app
+    const onboarding = await Onboarding.findOne({ 
+      adminEmail: email, 
+      shop: store,
+      completed: true 
+    });
+    
+    if (!onboarding) {
+      return res.status(403).json({ 
+        message: 'Your email is not onboarded in the Shopify app for this store. Please complete the onboarding process first.' 
+      });
     }
 
     const session =

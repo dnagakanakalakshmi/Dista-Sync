@@ -54,6 +54,10 @@ export default function HomePage() {
       } catch (err) {
         if (err?.response?.status === 404) {
           setHasToken(false);
+        } else if (err?.response?.status === 403) {
+          // User not onboarded
+          setHasToken(false);
+          console.log('User not onboarded:', err.response?.data?.message);
         } else {
           console.error('Error checking token:', err);
         }
