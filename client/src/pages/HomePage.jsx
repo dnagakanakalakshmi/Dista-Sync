@@ -109,7 +109,7 @@ export default function HomePage() {
           {!hasToken && (
             <Alert severity="warning" sx={{ py: 2 }}>
               <Typography>
-                Please install the Dista Sync App to grant access and view your data.
+                Please install the Dista Sync App and complete the onboarding process to grant access and view your data.
               </Typography>
             </Alert>
           )}
