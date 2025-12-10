@@ -92,10 +92,10 @@ export default function WelcomeBanner({ email, storeName }) {
               <StorefrontIcon sx={{ fontSize: 22 }} />
             </Avatar>
             <Box>
-              <Typography variant="caption" sx={{ opacity: 0.85, display: 'block', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: 1 }}>
+              <Typography variant="caption" sx={{ opacity: 0.85, display: 'block', fontSize: { xs: '0.6rem', sm: '0.7rem' }, textTransform: 'uppercase', letterSpacing: 1 }}>
                 Store Name
               </Typography>
-              <Typography variant="body1" sx={{ fontWeight: 600 }}>
+              <Typography variant="body1" sx={{ fontWeight: 600, fontSize: { xs: '0.875rem', sm: '1rem' } }}>
                 {storeName}
               </Typography>
             </Box>
@@ -116,10 +116,10 @@ export default function WelcomeBanner({ email, storeName }) {
               {email?.charAt(0)?.toUpperCase() || 'U'}
             </Avatar>
             <Box>
-              <Typography variant="caption" sx={{ opacity: 0.85, display: 'block', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: 1 }}>
+              <Typography variant="caption" sx={{ opacity: 0.85, display: 'block', fontSize: { xs: '0.6rem', sm: '0.7rem' }, textTransform: 'uppercase', letterSpacing: 1 }}>
                 Email
               </Typography>
-              <Typography variant="body1" sx={{ fontWeight: 600 }}>
+              <Typography variant="body1" sx={{ fontWeight: 600, fontSize: { xs: '0.875rem', sm: '1rem' } }}>
                 {email}
               </Typography>
             </Box>

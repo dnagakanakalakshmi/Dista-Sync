@@ -105,8 +105,7 @@ export default function HomePage() {
           {!hasToken && (
             <Alert severity="warning" sx={{ py: 2 }}>
               <Typography>
-                We could not find an access token for this store and email. Please install the Shopify
-                app to grant access and view your data.
+                Please install the Dista Sync App to grant access and view your data.
               </Typography>
             </Alert>
           )}

@@ -173,16 +173,17 @@ export default function ProductsPage() {
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
               Browse and update your product catalog
             </Typography>
-            <Paper
-              elevation={0}
-              sx={{
-                border: '1px solid',
-                borderColor: 'divider',
-                borderRadius: 3,
-                overflow: 'hidden',
-              }}
-            >
-              <Table>
+            <Box sx={{ overflowX: 'auto' }}>
+              <Paper
+                elevation={0}
+                sx={{
+                  border: '1px solid',
+                  borderColor: 'divider',
+                  borderRadius: 3,
+                  overflow: 'hidden',
+                }}
+              >
+                <Table sx={{ minWidth: 650 }}>
                 <TableHead>
                   <TableRow sx={{ background: '#f2f3ff' }}>
                         <TableCell sx={{ fontWeight: 600, color: '#4F5596' }}>ID</TableCell>
@@ -233,6 +234,7 @@ export default function ProductsPage() {
                 </TableBody>
               </Table>
             </Paper>
+            </Box>
           </Box>
 
           {/* Footer */}

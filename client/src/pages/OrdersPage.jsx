@@ -156,16 +156,17 @@ export default function OrdersPage() {
             <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
               View and manage all your customer orders
             </Typography>
-            <Paper
-              elevation={0}
-              sx={{
-                border: '1px solid',
-                borderColor: 'divider',
-                borderRadius: 3,
-                overflow: 'hidden',
-              }}
-            >
-              <Table>
+            <Box sx={{ overflowX: 'auto' }}>
+              <Paper
+                elevation={0}
+                sx={{
+                  border: '1px solid',
+                  borderColor: 'divider',
+                  borderRadius: 3,
+                  overflow: 'hidden',
+                }}
+              >
+                <Table sx={{ minWidth: 650 }}>
                 <TableHead>
                   <TableRow sx={{ background: '#f2f3ff' }}>
                     <TableCell sx={{ fontWeight: 600, color: '#4F5596' }}>ID</TableCell>
@@ -246,6 +247,7 @@ export default function OrdersPage() {
                 </TableBody>
               </Table>
             </Paper>
+            </Box>
           </Box>
 
           {/* Footer */}
