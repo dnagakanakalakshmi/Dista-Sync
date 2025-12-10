@@ -149,16 +149,8 @@ export default function InventoryPage() {
             <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
               Track stock levels and manage inventory
             </Typography>
-            <Box sx={{ overflowX: 'auto' }}>
-              <Paper
-                elevation={0}
-                sx={{
-                  border: '1px solid',
-                  borderColor: 'divider',
-                  borderRadius: 3,
-                }}
-              >
-                <Table sx={{ minWidth: 650 }}>
+            <Box sx={{ overflowX: 'auto', background: '#fff', borderRadius: 3, border: '1px solid', borderColor: 'divider' }}>
+              <Table sx={{ minWidth: 650 }}>
                 <TableHead>
                   <TableRow sx={{ background: '#f2f3ff' }}>
                     <TableCell sx={{ fontWeight: 600, color: '#4F5596' }}>Title</TableCell>
@@ -208,7 +200,6 @@ export default function InventoryPage() {
                   )}
                 </TableBody>
               </Table>
-            </Paper>
             </Box>
           </Box>
 
