@@ -180,7 +180,6 @@ export default function ProductsPage() {
                   border: '1px solid',
                   borderColor: 'divider',
                   borderRadius: 3,
-                  overflow: 'hidden',
                 }}
               >
                 <Table sx={{ minWidth: 650 }}>

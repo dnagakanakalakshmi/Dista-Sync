@@ -163,7 +163,6 @@ export default function OrdersPage() {
                   border: '1px solid',
                   borderColor: 'divider',
                   borderRadius: 3,
-                  overflow: 'hidden',
                 }}
               >
                 <Table sx={{ minWidth: 650 }}>
@@ -314,7 +313,7 @@ export default function OrdersPage() {
                 <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2, color: '#4F5596' }}>
                   Line Items
                 </Typography>
-                <Paper elevation={0} sx={{ border: '1px solid #e0e0e0', borderRadius: 2, overflow: 'hidden' }}>
+                <Paper elevation={0} sx={{ border: '1px solid #e0e0e0', borderRadius: 2 }}>
                   <Table size="small">
                     <TableHead>
                       <TableRow sx={{ background: '#f2f3ff' }}>
