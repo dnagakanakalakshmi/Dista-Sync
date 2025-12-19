@@ -22,7 +22,7 @@ export default function LoginPage() {
   const { login } = useAuth();
   const navigate = useNavigate();
   const [mode, setMode] = useState('login');
-  const [form, setForm] = useState({ email: '', password: '', store: '' });
+  const [form, setForm] = useState({ email: '', password: '' });
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
 
@@ -35,10 +35,13 @@ export default function LoginPage() {
     setLoading(true);
     try {
       if (mode === 'signup') {
-        await axios.post(`${API_URL}/api/auth/register`, form);
+        await axios.post(`${API_URL}/api/auth/register`, {
+          email: form.email,
+          password: form.password,
+        });
         setMessage('Registered successfully. You can now log in.');
         setMode('login');
-        setForm((prev) => ({ ...prev, password: '', store: '' }));
+        setForm((prev) => ({ ...prev, password: '' }));
         setLoading(false);
         return;
       }
@@ -59,8 +62,8 @@ export default function LoginPage() {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (mode === 'signup' && (!form.email || !form.password || !form.store)) {
-      setMessage('Please fill in email, password, and store URL.');
+    if (mode === 'signup' && (!form.email || !form.password)) {
+      setMessage('Please fill in email and password.');
       return;
     }
     if (mode === 'login' && (!form.email || !form.password)) {
@@ -228,29 +231,6 @@ export default function LoginPage() {
                       }}
                     />
                   </Grid>
-                  {mode === 'signup' && (
-                    <Grid item xs={12}>
-                      <TextField
-                        label="Store URL"
-                        name="store"
-                        value={form.store}
-                        onChange={handleChange}
-                        fullWidth
-                        required
-                        placeholder="e.g., mystore.myshopify.com"
-                        sx={{
-                          '& .MuiOutlinedInput-root': {
-                            '&:hover fieldset': {
-                              borderColor: '#848FFC',
-                            },
-                            '&.Mui-focused fieldset': {
-                              borderColor: '#848FFC',
-                            },
-                          },
-                        }}
-                      />
-                    </Grid>
-                  )}
                   <Grid item xs={12}>
                     <Button
                       type="submit"

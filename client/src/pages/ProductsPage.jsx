@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import {
   Box,
@@ -19,6 +19,8 @@ import {
   TextField,
   Typography,
   Alert,
+  Tabs,
+  Tab,
 } from '@mui/material';
 import axios from 'axios';
 import LoadingSpinner from '../components/LoadingSpinner';
@@ -28,9 +30,11 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 export default function ProductsPage() {
   const { user, logout, isLoading: authLoading } = useAuth();
   const navigate = useNavigate();
-  const [products, setProducts] = useState([]);
+  const [searchParams] = useSearchParams();
+  const [stores, setStores] = useState([]);
+  const [selectedStore, setSelectedStore] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [editDialog, setEditDialog] = useState({ open: false, row: null });
+  const [editDialog, setEditDialog] = useState({ open: false, row: null, store: null });
   const [editForm, setEditForm] = useState({});
   const [message, setMessage] = useState('');
 
@@ -48,10 +52,15 @@ export default function ProductsPage() {
   const fetchProducts = async () => {
     try {
       const { data } = await axios.get(`${API_URL}/api/data`, {
-        params: { email: user.email, store: user.store },
+        params: { email: user.email },
       });
-      if (data.token) {
-        setProducts(data.products || []);
+      if (data.stores && data.stores.length > 0) {
+        setStores(data.stores);
+        const storeParam = searchParams.get('store');
+        if (storeParam) {
+          const idx = data.stores.findIndex((s) => s.shop === storeParam);
+          setSelectedStore(idx >= 0 ? idx : 0);
+        }
       } else {
         navigate('/home');
       }
@@ -65,8 +74,8 @@ export default function ProductsPage() {
     }
   };
 
-  const openEdit = (row) => {
-    setEditDialog({ open: true, row });
+  const openEdit = (row, store) => {
+    setEditDialog({ open: true, row, store });
     setEditForm({ 
       title: row.variantTitle && row.variantTitle !== 'Default Title' ? row.variantTitle : row.title, 
       price: row.price,
@@ -79,6 +88,7 @@ export default function ProductsPage() {
       // Update product title and price
       await axios.post(`${API_URL}/api/products/update`, {
         email: user.email,
+        store: editDialog.store,
         productId: editDialog.row.productId,
         variantId: editDialog.row.variantId,
         title: editForm.title,
@@ -95,7 +105,7 @@ export default function ProductsPage() {
       ) {
         await axios.post(`${API_URL}/api/inventory/update`, {
           email: user.email,
-          store: user.store,
+          store: editDialog.store,
           itemId: editDialog.row.inventoryItemId,
           locationId: editDialog.row.locationId,
           newQty: Number(editForm.inventory),
@@ -104,13 +114,15 @@ export default function ProductsPage() {
       }
 
       await fetchProducts();
-      setEditDialog({ open: false, row: null });
+      setEditDialog({ open: false, row: null, store: null });
       setMessage('Product updated successfully');
       setTimeout(() => setMessage(''), 3000);
     } catch (err) {
       setMessage(err?.response?.data?.message || 'Update failed');
     }
   };
+
+  const currentProducts = stores[selectedStore]?.products || [];
 
   if (authLoading || loading) {
     return (
@@ -165,10 +177,29 @@ export default function ProductsPage() {
             </Alert>
           )}
 
+          {/* Store Tabs */}
+          {stores.length > 1 && (
+            <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
+              <Tabs 
+                value={selectedStore} 
+                onChange={(e, newValue) => setSelectedStore(newValue)}
+                sx={{
+                  '& .MuiTab-root': { fontWeight: 600 },
+                  '& .Mui-selected': { color: '#4F5596' },
+                  '& .MuiTabs-indicator': { backgroundColor: '#4F5596' },
+                }}
+              >
+                {stores.map((store, idx) => (
+                  <Tab key={idx} label={store.shop} />
+                ))}
+              </Tabs>
+            </Box>
+          )}
+
           {/* Products Table */}
           <Box>
                 <Typography variant="h5" sx={{ fontWeight: 600, mb: 1, color: '#4F5596' }}>
-              Products
+              Products {stores.length > 1 ? `- ${stores[selectedStore]?.shop}` : ''}
             </Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
               Browse and update your product catalog
@@ -185,7 +216,7 @@ export default function ProductsPage() {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {products.map((product, idx) => (
+                  {currentProducts.map((product, idx) => (
                     <TableRow
                       key={idx}
                       sx={{
@@ -201,7 +232,7 @@ export default function ProductsPage() {
                       <TableCell align="right">
                         <Button
                           size="small"
-                          onClick={() => openEdit(product)}
+                          onClick={() => openEdit(product, stores[selectedStore]?.shop)}
                           sx={{
                             background: 'linear-gradient(180deg, #848FFC 16.67%, #4F5596 265.15%)',
                             color: '#fff',
@@ -215,7 +246,7 @@ export default function ProductsPage() {
                       </TableCell>
                     </TableRow>
                   ))}
-                  {products.length === 0 && (
+                  {currentProducts.length === 0 && (
                     <TableRow>
                       <TableCell colSpan={5} align="center" sx={{ py: 4 }}>
                         <Typography color="text.secondary">No products found</Typography>

@@ -9,8 +9,7 @@ dotenv.config();
 
 // Mongo connection
 const MONGO_URI =
-  process.env.MONGO_URI ||
-  'mongodb+srv://naga:naga0804@cluster0.esec6.mongodb.net/DistaApps?retryWrites=true&w=majority&appName=Cluster0';
+  process.env.MONGO_URI;
 
 mongoose
   .connect(MONGO_URI, { dbName: 'DistaApps' })
@@ -52,26 +51,21 @@ const onboardingSchema = new mongoose.Schema(
   { timestamps: true, collection: 'Onboarding' }
 );
 
-const emailsSchema = new mongoose.Schema(
-  {
-    emails: { type: String, unique: true },
-  },
-  { timestamps: true, collection: 'Emails' }
-);
-
-// Lightweight user store to keep password hashes and associated store
+// Lightweight user store to keep password hashes
 const userSchema = new mongoose.Schema(
   {
     email: { type: String, unique: true, required: true },
     passwordHash: { type: String, required: true },
-    store: { type: String, required: true },
+    // Legacy single store string
+    store: { type: String },
+    // New format: array of stores or raw JSON string
+    stores: { type: mongoose.Schema.Types.Mixed },
   },
   { timestamps: true, collection: 'Users' }
 );
 
 const Session = mongoose.model('Session', sessionSchema);
 const Onboarding = mongoose.model('Onboarding', onboardingSchema);
-const Emails = mongoose.model('Emails', emailsSchema);
 const User = mongoose.model('User', userSchema);
 
 const SHOPIFY_API_VERSION = '2023-07';
@@ -86,9 +80,9 @@ app.get('/api/health', (_req, res) => res.json({ ok: true }));
 // Registration endpoint
 app.post('/api/auth/register', async (req, res) => {
   try {
-    const { email, password, store } = req.body;
-    if (!email || !password || !store) {
-      return res.status(400).json({ message: 'Email, password, and store are required' });
+    const { email, password } = req.body;
+    if (!email || !password) {
+      return res.status(400).json({ message: 'Email and password are required' });
     }
 
     const existing = await User.findOne({ email });
@@ -97,8 +91,7 @@ app.post('/api/auth/register', async (req, res) => {
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
-    await User.create({ email, passwordHash, store });
-    await Emails.updateOne({ emails: email }, { emails: email }, { upsert: true });
+    await User.create({ email, passwordHash });
     res.json({ message: 'Registered successfully' });
   } catch (err) {
     console.error('Register error', err);
@@ -124,7 +117,10 @@ app.post('/api/auth/login', async (req, res) => {
       return res.status(401).json({ message: 'Invalid credentials' });
     }
 
-    res.json({ email: user.email, store: user.store });
+    // Try to surface the store from onboarding (if completed) for UI display purposes
+    const onboarding = await Onboarding.findOne({ adminEmail: email, completed: true }).sort({ updatedAt: -1 });
+
+    res.json({ email: user.email, store: onboarding?.shop || '' });
   } catch (err) {
     console.error('Login error', err);
     res.status(500).json({ message: 'Login failed' });
@@ -390,59 +386,106 @@ const fetchShopifyData = async (shop, token) => {
 
 const resolveSession = async (email, storeQuery) => {
   if (!email) throw new Error('Email is required');
-  let store = storeQuery;
-  if (!store) {
-    const user = await User.findOne({ email });
-    if (!user) throw new Error('User not found for this email');
-    store = user.store;
+
+  // Prefer explicit store, otherwise fall back to the latest onboarded shop for this email
+  let onboarding;
+  if (storeQuery) {
+    onboarding = await Onboarding.findOne({ adminEmail: email, shop: storeQuery, completed: true });
+  } else {
+    onboarding = await Onboarding.findOne({ adminEmail: email, completed: true }).sort({ updatedAt: -1 });
   }
+
+  const store = storeQuery || onboarding?.shop;
+  if (!store || !onboarding) {
+    throw new Error('Onboarded store not found for this email');
+  }
+
   const session =
     (await Session.findOne({ shop: store, email })) || (await Session.findOne({ shop: store }));
   if (!session || !session.accessToken) throw new Error('Token missing; install Shopify app to access data');
   return { store, token: session.accessToken };
 };
 
-// Data fetch endpoint: checks for access token for store+email
+// Data fetch endpoint: finds stores from Users database and fetches data using Session tokens
 app.get('/api/data', async (req, res) => {
   try {
-    const { email, store: storeQuery } = req.query;
+    const { email } = req.query;
     if (!email) {
       return res.status(400).json({ message: 'Email is required' });
     }
 
-    // Check if user is registered
+    // Check if user is registered in Users collection
     const user = await User.findOne({ email });
     if (!user) {
       return res.status(404).json({ message: 'User not found. Please register first.' });
     }
 
-    let store = storeQuery || user.store;
+    // Get stores from user record - handle both old format (store) and new format (stores)
+    let userStores = [];
+    if (user.stores) {
+      // Accept both stored JSON string and direct array
+      if (Array.isArray(user.stores)) {
+        userStores = user.stores;
+      } else {
+        try {
+          userStores = JSON.parse(user.stores);
+        } catch (err) {
+          console.error('Error parsing user.stores:', err, 'value:', user.stores);
+        }
+      }
+    } else if (user.store) {
+      // Old format: single store string
+      userStores = [user.store];
+    }
 
-    // Check if the user's email is onboarded in the Shopify app
-    const onboarding = await Onboarding.findOne({ 
-      adminEmail: email, 
-      shop: store,
-      completed: true 
-    });
-    
-    if (!onboarding) {
-      return res.status(403).json({ 
-        message: 'Your email is not onboarded in the Shopify app for this store. Please complete the onboarding process first.' 
+    if (userStores.length === 0) {
+      console.warn('[DATA] No stores extracted from Users record', user.email, 'raw stores:', user.stores, 'raw store:', user.store);
+    }
+
+    if (userStores.length === 0) {
+      // Fallback: derive stores from completed onboardings for this email
+      const onboarded = await Onboarding.find({ adminEmail: email, completed: true }).sort({ updatedAt: -1 });
+      userStores = onboarded.map((o) => o.shop).filter(Boolean);
+    }
+
+    if (userStores.length === 0) {
+      return res.status(403).json({
+        message: 'No stores found for this user. Please link a store first.',
       });
     }
 
-    const session =
-      (await Session.findOne({ shop: store, email })) || (await Session.findOne({ shop: store }));
-    if (!session || !session.accessToken) {
-      return res.status(404).json({ message: 'Token missing; install Shopify app to access data' });
+    // Group data by store instead of aggregating
+    const stores = [];
+
+    for (const store of userStores) {
+      try {
+        // Find session for this store
+        const session =
+          (await Session.findOne({ shop: store, email })) || 
+          (await Session.findOne({ shop: store }));
+
+        if (!session || !session.accessToken) {
+          console.warn(`Token missing for store ${store}, skipping`);
+          continue;
+        }
+
+        // Fetch Shopify data for this store
+        const shopifyData = await fetchShopifyData(store, session.accessToken);
+
+        // Store data grouped by shop
+        stores.push({
+          shop: store,
+          token: session.accessToken,
+          orders: shopifyData.orders || [],
+          products: shopifyData.products || [],
+          inventory: shopifyData.inventory || [],
+        });
+      } catch (err) {
+        console.error(`Error fetching data for store ${store}:`, err);
+      }
     }
 
-    const shopifyData = await fetchShopifyData(store, session.accessToken);
-
-    res.json({
-      token: session.accessToken,
-      ...shopifyData,
-    });
+    res.json({ stores });
   } catch (err) {
     console.error('Data fetch error', err);
     res.status(500).json({ message: 'Failed to fetch data' });

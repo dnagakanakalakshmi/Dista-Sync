@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import {
   Box,
@@ -20,6 +20,8 @@ import {
   Typography,
   Alert,
   MenuItem,
+  Tabs,
+  Tab,
 } from '@mui/material';
 import axios from 'axios';
 import LoadingSpinner from '../components/LoadingSpinner';
@@ -29,10 +31,12 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 export default function OrdersPage() {
   const { user, logout, isLoading: authLoading } = useAuth();
   const navigate = useNavigate();
-  const [orders, setOrders] = useState([]);
+  const [searchParams] = useSearchParams();
+  const [stores, setStores] = useState([]);
+  const [selectedStore, setSelectedStore] = useState(0);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState('');
-  const [editDialog, setEditDialog] = useState({ open: false, row: null });
+  const [editDialog, setEditDialog] = useState({ open: false, row: null, store: null });
   const [editForm, setEditForm] = useState({});
   const [viewDialog, setViewDialog] = useState({ open: false, order: null });
 
@@ -50,10 +54,15 @@ export default function OrdersPage() {
   const fetchOrders = async () => {
     try {
       const { data } = await axios.get(`${API_URL}/api/data`, {
-        params: { email: user.email, store: user.store, _t: Date.now() },
+        params: { email: user.email, _t: Date.now() },
       });
-      if (data.token) {
-        setOrders(data.orders || []);
+      if (data.stores && data.stores.length > 0) {
+        setStores(data.stores);
+        const storeParam = searchParams.get('store');
+        if (storeParam) {
+          const idx = data.stores.findIndex((s) => s.shop === storeParam);
+          setSelectedStore(idx >= 0 ? idx : 0);
+        }
       } else {
         navigate('/home');
       }
@@ -67,8 +76,8 @@ export default function OrdersPage() {
     }
   };
 
-  const openEdit = (row) => {
-    setEditDialog({ open: true, row });
+  const openEdit = (row, store) => {
+    setEditDialog({ open: true, row, store });
     setEditForm({ status: row.status && row.status !== '—' ? row.status : '' });
   };
 
@@ -80,20 +89,22 @@ export default function OrdersPage() {
     try {
       await axios.post(`${API_URL}/api/orders/update`, {
         email: user.email,
-        store: user.store,
+        store: editDialog.store,
         orderId: editDialog.row.orderId,
         status: editForm.status,
       });
       // Wait 2 seconds for Shopify to process the cancellation
       await new Promise(resolve => setTimeout(resolve, 2000));
       await fetchOrders();
-      setEditDialog({ open: false, row: null });
+      setEditDialog({ open: false, row: null, store: null });
       setMessage('Order updated successfully');
       setTimeout(() => setMessage(''), 3000);
     } catch (err) {
       setMessage(err?.response?.data?.message || 'Update failed');
     }
   };
+
+  const currentOrders = stores[selectedStore]?.orders || [];
 
   if (authLoading || loading) {
     return (
@@ -148,10 +159,29 @@ export default function OrdersPage() {
             </Alert>
           )}
 
+          {/* Store Tabs */}
+          {stores.length > 1 && (
+            <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
+              <Tabs 
+                value={selectedStore} 
+                onChange={(e, newValue) => setSelectedStore(newValue)}
+                sx={{
+                  '& .MuiTab-root': { fontWeight: 600 },
+                  '& .Mui-selected': { color: '#4F5596' },
+                  '& .MuiTabs-indicator': { backgroundColor: '#4F5596' },
+                }}
+              >
+                {stores.map((store, idx) => (
+                  <Tab key={idx} label={store.shop} />
+                ))}
+              </Tabs>
+            </Box>
+          )}
+
           {/* Orders Table */}
           <Box>
             <Typography variant="h5" sx={{ fontWeight: 600, mb: 1, color: '#4F5596' }}>
-              Orders
+              Orders {stores.length > 1 ? `- ${stores[selectedStore]?.shop}` : ''}
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
               View and manage all your customer orders
@@ -168,7 +198,7 @@ export default function OrdersPage() {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {orders.map((order, idx) => (
+                  {currentOrders.map((order, idx) => (
                     <TableRow
                       key={idx}
                       sx={{
@@ -213,7 +243,7 @@ export default function OrdersPage() {
                           </Button>
                           <Button
                             size="small"
-                            onClick={() => openEdit(order)}
+                            onClick={() => openEdit(order, stores[selectedStore]?.shop)}
                             sx={{
                               background: 'linear-gradient(180deg, #848FFC 16.67%, #4F5596 265.15%)',
                               color: '#fff',
@@ -228,7 +258,7 @@ export default function OrdersPage() {
                       </TableCell>
                     </TableRow>
                   ))}
-                  {orders.length === 0 && (
+                  {currentOrders.length === 0 && (
                     <TableRow>
                       <TableCell colSpan={5} align="center" sx={{ py: 4 }}>
                         <Typography color="text.secondary">No orders found</Typography>

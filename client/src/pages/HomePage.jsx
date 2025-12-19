@@ -10,6 +10,13 @@ import {
   Typography,
   Alert,
   Grid,
+  Tabs,
+  Tab,
+  Table,
+  TableHead,
+  TableBody,
+  TableRow,
+  TableCell,
 } from '@mui/material';
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 import InventoryIcon from '@mui/icons-material/Inventory';
@@ -27,6 +34,10 @@ export default function HomePage() {
   const [hasToken, setHasToken] = useState(null);
   const [loading, setLoading] = useState(true);
   const [counts, setCounts] = useState({ orders: 0, products: 0, inventory: 0 });
+  const [shops, setShops] = useState([]);
+  const [storesData, setStoresData] = useState([]);
+  const [storeTabs, setStoreTabs] = useState([]); // per-store selected tab (orders/products/inventory)
+  const [selectedStoreIdx, setSelectedStoreIdx] = useState(0);
 
   useEffect(() => {
     if (authLoading) return;
@@ -39,17 +50,31 @@ export default function HomePage() {
     const checkToken = async () => {
       try {
         const { data } = await axios.get(`${API_URL}/api/data`, {
-          params: { email: user.email, store: user.store },
+          params: { email: user.email },
         });
-        if (data.token) {
+
+        const stores = data.stores || [];
+        const countsAgg = stores.reduce(
+          (acc, s) => ({
+            orders: acc.orders + (s.orders?.length || 0),
+            products: acc.products + (s.products?.length || 0),
+            inventory: acc.inventory + (s.inventory?.length || 0),
+          }),
+          { orders: 0, products: 0, inventory: 0 }
+        );
+
+        if (stores.length > 0) {
           setHasToken(true);
-          setCounts({
-            orders: data.orders?.length || 0,
-            products: data.products?.length || 0,
-            inventory: data.inventory?.length || 0,
-          });
+          setCounts(countsAgg);
+          setShops(stores.map((s) => s.shop));
+          setStoresData(stores);
+          setStoreTabs(stores.map(() => 'orders'));
+          setSelectedStoreIdx(0);
         } else {
           setHasToken(false);
+          setStoresData([]);
+          setStoreTabs([]);
+          setSelectedStoreIdx(0);
         }
       } catch (err) {
         if (err?.response?.status === 404) {
@@ -103,47 +128,67 @@ export default function HomePage() {
           </Box>
 
           {/* Welcome Banner */}
-          <WelcomeBanner email={user?.email || ''} storeName={user?.store || ''} />
+          <WelcomeBanner email={user?.email || ''} shops={shops} />
 
           {/* Token Status Alert */}
           {!hasToken && (
             <Alert severity="warning" sx={{ py: 2 }}>
               <Typography>
-                Please install the Dista Sync App and complete the onboarding process to grant access and view your data.
+                No data found.
               </Typography>
             </Alert>
           )}
 
-          {/* Quick Navigation */}
-          {hasToken && (
+          {/* Quick Navigation per selected store */}
+          {hasToken && storesData.length > 0 && (
             <Box>
-              <Typography variant="h5" sx={{ fontWeight: 600, mb: 1, color: 'text.primary' }}>
-                Quick Navigation
-              </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-                Access your most important sections
-              </Typography>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                <Box>
+                  <Typography variant="h5" sx={{ fontWeight: 600, mb: 0.5, color: 'text.primary' }}>
+                    Quick Navigation
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Choose a store to view its data
+                  </Typography>
+                </Box>
+                {storesData.length > 1 && (
+                  <Tabs
+                    value={selectedStoreIdx}
+                    onChange={(_, v) => setSelectedStoreIdx(v)}
+                    sx={{
+                      '& .MuiTab-root': { fontWeight: 600 },
+                      '& .Mui-selected': { color: '#4F5596' },
+                      '& .MuiTabs-indicator': { backgroundColor: '#4F5596' },
+                    }}
+                  >
+                    {storesData.map((s, idx) => (
+                      <Tab key={s.shop || idx} label={s.shop || `Store ${idx + 1}`} />
+                    ))}
+                  </Tabs>
+                )}
+              </Box>
+
               <Grid container spacing={3} sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', md: 'repeat(3, 1fr)' }, gap: 3 }}>
                 <NavigationCard
                   title="Orders"
                   description="View and manage all your customer orders"
                   icon={ShoppingCartIcon}
-                  to="/orders"
-                  count={counts.orders}
+                  to={`/orders?store=${encodeURIComponent(storesData[selectedStoreIdx]?.shop || '')}`}
+                  count={storesData[selectedStoreIdx]?.orders?.length || 0}
                 />
                 <NavigationCard
                   title="Products"
                   description="Browse and update your product catalog"
                   icon={CategoryIcon}
-                  to="/products"
-                  count={counts.products}
+                  to={`/products?store=${encodeURIComponent(storesData[selectedStoreIdx]?.shop || '')}`}
+                  count={storesData[selectedStoreIdx]?.products?.length || 0}
                 />
                 <NavigationCard
                   title="Inventory"
                   description="Track stock levels and manage inventory"
                   icon={InventoryIcon}
-                  to="/inventory"
-                  count={counts.inventory}
+                  to={`/inventory?store=${encodeURIComponent(storesData[selectedStoreIdx]?.shop || '')}`}
+                  count={storesData[selectedStoreIdx]?.inventory?.length || 0}
                 />
               </Grid>
             </Box>

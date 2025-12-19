@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import {
   Box,
@@ -19,6 +19,8 @@ import {
   TextField,
   Typography,
   Alert,
+  Tabs,
+  Tab,
 } from '@mui/material';
 import axios from 'axios';
 import LoadingSpinner from '../components/LoadingSpinner';
@@ -28,9 +30,11 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 export default function InventoryPage() {
   const { user, logout, isLoading: authLoading } = useAuth();
   const navigate = useNavigate();
-  const [inventory, setInventory] = useState([]);
+  const [searchParams] = useSearchParams();
+  const [stores, setStores] = useState([]);
+  const [selectedStore, setSelectedStore] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [editDialog, setEditDialog] = useState({ open: false, row: null });
+  const [editDialog, setEditDialog] = useState({ open: false, row: null, store: null });
   const [editForm, setEditForm] = useState({});
   const [message, setMessage] = useState('');
 
@@ -48,10 +52,15 @@ export default function InventoryPage() {
   const fetchInventory = async () => {
     try {
       const { data } = await axios.get(`${API_URL}/api/data`, {
-        params: { email: user.email, store: user.store },
+        params: { email: user.email },
       });
-      if (data.token) {
-        setInventory(data.inventory || []);
+      if (data.stores && data.stores.length > 0) {
+        setStores(data.stores);
+        const storeParam = searchParams.get('store');
+        if (storeParam) {
+          const idx = data.stores.findIndex((s) => s.shop === storeParam);
+          setSelectedStore(idx >= 0 ? idx : 0);
+        }
       } else {
         navigate('/home');
       }
@@ -65,8 +74,8 @@ export default function InventoryPage() {
     }
   };
 
-  const openEdit = (row) => {
-    setEditDialog({ open: true, row });
+  const openEdit = (row, store) => {
+    setEditDialog({ open: true, row, store });
     setEditForm({ qty: row.qty });
   };
 
@@ -74,19 +83,22 @@ export default function InventoryPage() {
     try {
       await axios.post(`${API_URL}/api/inventory/update`, {
         email: user.email,
+        store: editDialog.store,
         itemId: editDialog.row.itemId,
         locationId: editDialog.row.locationId,
         newQty: editForm.qty,
         currentQty: editDialog.row.qty,
       });
       await fetchInventory();
-      setEditDialog({ open: false, row: null });
+      setEditDialog({ open: false, row: null, store: null });
       setMessage('Inventory updated successfully');
       setTimeout(() => setMessage(''), 3000);
     } catch (err) {
       setMessage(err?.response?.data?.message || 'Update failed');
     }
   };
+
+  const currentInventory = stores[selectedStore]?.inventory || [];
 
   if (authLoading || loading) {
     return (
@@ -141,10 +153,29 @@ export default function InventoryPage() {
             </Alert>
           )}
 
+          {/* Store Tabs */}
+          {stores.length > 1 && (
+            <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
+              <Tabs 
+                value={selectedStore} 
+                onChange={(e, newValue) => setSelectedStore(newValue)}
+                sx={{
+                  '& .MuiTab-root': { fontWeight: 600 },
+                  '& .Mui-selected': { color: '#4F5596' },
+                  '& .MuiTabs-indicator': { backgroundColor: '#4F5596' },
+                }}
+              >
+                {stores.map((store, idx) => (
+                  <Tab key={idx} label={store.shop} />
+                ))}
+              </Tabs>
+            </Box>
+          )}
+
           {/* Inventory Table */}
           <Box>
             <Typography variant="h5" sx={{ fontWeight: 600, mb: 1, color: '#4F5596' }}>
-              Inventory
+              Inventory {stores.length > 1 ? `- ${stores[selectedStore]?.shop}` : ''}
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
               Track stock levels and manage inventory
@@ -161,7 +192,7 @@ export default function InventoryPage() {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {inventory.map((item, idx) => (
+                  {currentInventory.map((item, idx) => (
                     <TableRow
                       key={idx}
                       sx={{
@@ -177,7 +208,7 @@ export default function InventoryPage() {
                       <TableCell align="right">
                         <Button
                           size="small"
-                          onClick={() => openEdit(item)}
+                          onClick={() => openEdit(item, stores[selectedStore]?.shop)}
                           sx={{
                             background: 'linear-gradient(180deg, #848FFC 16.67%, #4F5596 265.15%)',
                             color: '#fff',
@@ -191,7 +222,7 @@ export default function InventoryPage() {
                       </TableCell>
                     </TableRow>
                   ))}
-                  {inventory.length === 0 && (
+                  {currentInventory.length === 0 && (
                     <TableRow>
                       <TableCell colSpan={5} align="center" sx={{ py: 4 }}>
                         <Typography color="text.secondary">No inventory found</Typography>

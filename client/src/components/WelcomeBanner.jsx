@@ -1,8 +1,7 @@
 import { Box, Typography, Avatar } from '@mui/material';
-import StorefrontIcon from '@mui/icons-material/Storefront';
 import DistaLogo from '../assets/dista-logo.png';
 
-export default function WelcomeBanner({ email, storeName }) {
+export default function WelcomeBanner({ email }) {
   return (
     <Box
       sx={{
@@ -51,55 +50,40 @@ export default function WelcomeBanner({ email, storeName }) {
       />
 
       <Box sx={{ position: 'relative', zIndex: 1 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 2, md: 3 }, mb: 2 }}>
-          {/* Logo */}
-          <Box
-            component="img"
-            src={DistaLogo}
-            alt="Dista Logo"
-            sx={{
-              width: { xs: 60, md: 80 },
-              height: { xs: 60, md: 80 },
-              borderRadius: '200%',
-              flexShrink: 0,
-              objectFit: 'contain',
-            }}
-          />
-          <Typography
-            variant="h4"
-            sx={{
-              fontWeight: 700,
-              fontSize: { xs: '1.75rem', md: '2.25rem' },
-            }}
-          >
-            Welcome to Dista Sync
-          </Typography>
-        </Box>
-        <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: { xs: 2, sm: 4 }, mt: 3 }}>
-          <Box
-            sx={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 2,
-              background: 'rgba(255, 255, 255, 0.15)',
-              backdropFilter: 'blur(10px)',
-              borderRadius: 2,
-              px: 2.5,
-              py: 1.5,
-            }}
-          >
-            <Avatar sx={{ bgcolor: 'rgba(255, 255, 255, 0.2)', width: 40, height: 40 }}>
-              <StorefrontIcon sx={{ fontSize: 22 }} />
-            </Avatar>
-            <Box>
-              <Typography variant="caption" sx={{ opacity: 0.85, display: 'block', fontSize: { xs: '0.6rem', sm: '0.7rem' }, textTransform: 'uppercase', letterSpacing: 1 }}>
-                Store Name
-              </Typography>
-              <Typography variant="body1" sx={{ fontWeight: 600, fontSize: { xs: '0.6rem', sm: '1rem' } }}>
-                {storeName}
-              </Typography>
-            </Box>
+        <Box
+          sx={{
+            display: 'flex',
+            flexDirection: { xs: 'column', md: 'row' },
+            alignItems: { xs: 'flex-start', md: 'center' },
+            justifyContent: 'space-between',
+            gap: { xs: 2, md: 3 },
+          }}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 2, md: 3 } }}>
+            {/* Logo */}
+            <Box
+              component="img"
+              src={DistaLogo}
+              alt="Dista Logo"
+              sx={{
+                width: { xs: 60, md: 80 },
+                height: { xs: 60, md: 80 },
+                borderRadius: '200%',
+                flexShrink: 0,
+                objectFit: 'contain',
+              }}
+            />
+            <Typography
+              variant="h4"
+              sx={{
+                fontWeight: 700,
+                fontSize: { xs: '1.75rem', md: '2.25rem' },
+              }}
+            >
+              Welcome to Dista Sync
+            </Typography>
           </Box>
+
           <Box
             sx={{
               display: 'flex',
@@ -110,6 +94,9 @@ export default function WelcomeBanner({ email, storeName }) {
               borderRadius: 2,
               px: 2.5,
               py: 1.5,
+              alignSelf: { xs: 'stretch', md: 'center' },
+              minWidth: { xs: '100%', md: 'auto' },
+              justifyContent: { xs: 'flex-start', md: 'flex-end' },
             }}
           >
             <Avatar sx={{ bgcolor: 'rgba(255, 255, 255, 0.2)', width: 40, height: 40, fontSize: '1rem', fontWeight: 600 }}>
