@@ -443,12 +443,6 @@ app.get('/api/data', async (req, res) => {
     }
 
     if (userStores.length === 0) {
-      // Fallback: derive stores from completed onboardings for this email
-      const onboarded = await Onboarding.find({ adminEmail: email, completed: true }).sort({ updatedAt: -1 });
-      userStores = onboarded.map((o) => o.shop).filter(Boolean);
-    }
-
-    if (userStores.length === 0) {
       return res.status(403).json({
         message: 'No stores found for this user. Please link a store first.',
       });
