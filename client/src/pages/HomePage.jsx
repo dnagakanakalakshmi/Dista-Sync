@@ -147,9 +147,6 @@ export default function HomePage() {
                   <Typography variant="h5" sx={{ fontWeight: 600, mb: 0.5, color: 'text.primary' }}>
                     Quick Navigation
                   </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Choose a store to view its data
-                  </Typography>
                 </Box>
                 {storesData.length > 1 && (
                   <Tabs
