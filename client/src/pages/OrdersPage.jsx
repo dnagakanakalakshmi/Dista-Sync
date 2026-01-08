@@ -314,11 +314,12 @@ export default function OrdersPage() {
                           <Button
                             size="small"
                             onClick={() => openEdit(order, stores[selectedStore]?.shop)}
+                            disabled={order.status === 'CANCELLED'}
                             sx={{
-                              background: 'linear-gradient(180deg, #848FFC 16.67%, #4F5596 265.15%)',
+                              background: order.status === 'CANCELLED' ? '#ccc' : 'linear-gradient(180deg, #848FFC 16.67%, #4F5596 265.15%)',
                               color: '#fff',
                               '&:hover': {
-                                background: 'linear-gradient(180deg, #727AE8 16.67%, #40457C 265.15%)',
+                                background: order.status === 'CANCELLED' ? '#ccc' : 'linear-gradient(180deg, #727AE8 16.67%, #40457C 265.15%)',
                               },
                             }}
                           >
