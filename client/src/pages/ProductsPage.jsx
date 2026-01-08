@@ -289,6 +289,7 @@ export default function ProductsPage() {
               value={editForm.title || ''}
               onChange={(e) => setEditForm((f) => ({ ...f, title: e.target.value }))}
               fullWidth
+              disabled={Boolean(editDialog.row?.variantId)}
               sx={{
                 '& .MuiOutlinedInput-root': {
                   '&:hover fieldset': {

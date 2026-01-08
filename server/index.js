@@ -417,7 +417,6 @@ const resolveSession = async (email, storeQuery) => {
     (await Session.findOne({ shop: store, email })) || (await Session.findOne({ shop: store }));
   if (!session || !session.accessToken) throw new Error('Token missing; install Shopify app to access data');
 
-  console.log('access token', session.accessToken);
   
   return { store, token: session.accessToken };
 };
@@ -509,7 +508,8 @@ app.post('/api/products/update', async (req, res) => {
     if (!productId) return res.status(400).json({ message: 'productId is required' });
     const { store: shop, token } = await resolveSession(email, store);
 
-    if (title) {
+    // Product-level update: only when variantId is not provided
+    if (title && !variantId) {
       const mutation = `
         mutation productUpdate($input: ProductInput!) {
           productUpdate(input: $input) {
@@ -523,7 +523,8 @@ app.post('/api/products/update', async (req, res) => {
       if (errors && errors.length) return res.status(400).json({ message: errors[0].message });
     }
 
-    if (price && variantId) {
+    // Variant-level price updates using productVariantsBulkUpdate
+    if (variantId && price) {
       const mutation = `
         mutation productVariantsBulkUpdate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
           productVariantsBulkUpdate(productId: $productId, variants: $variants) {
