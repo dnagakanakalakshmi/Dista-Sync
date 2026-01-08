@@ -68,7 +68,7 @@ const Session = mongoose.model('Session', sessionSchema);
 const Onboarding = mongoose.model('Onboarding', onboardingSchema);
 const User = mongoose.model('User', userSchema);
 
-const SHOPIFY_API_VERSION = '2023-07';
+const SHOPIFY_API_VERSION = '2026-01';
 
 const app = express();
 app.use(cors({ origin: true, credentials: true }));
@@ -189,6 +189,7 @@ const fetchShopifyData = async (shop, token) => {
             displayFinancialStatus
             cancelReason
             cancelledAt
+            closedAt
             totalPriceSet { shopMoney { amount currencyCode } }
             customer { displayName email }
             lineItems(first: 50) {
@@ -296,9 +297,21 @@ const fetchShopifyData = async (shop, token) => {
   const orders =
     ordersData?.orders?.edges?.map(({ node }) => {
       const isCancelled = Boolean(node.cancelledAt || node.cancelReason);
-      const displayStatus = isCancelled
-        ? 'CANCELLED'
-        : node.displayFulfillmentStatus || node.displayFinancialStatus || '—';
+      const isClosed = Boolean(node.closedAt);
+      
+      // Prioritize showing fulfillment status over closed status
+      let displayStatus;
+      if (isCancelled) {
+        displayStatus = 'CANCELLED';
+      } else if (node.displayFulfillmentStatus && node.displayFulfillmentStatus !== 'UNFULFILLED') {
+        // Show fulfillment status if it's fulfilled/partially fulfilled
+        displayStatus = node.displayFulfillmentStatus;
+      } else if (isClosed) {
+        displayStatus = 'CLOSED';
+      } else {
+        displayStatus = node.displayFulfillmentStatus || node.displayFinancialStatus || '—';
+      }
+
 
       const lineItems = node.lineItems?.edges?.map(({ node: item }) => ({
         id: item.id?.split('/').pop() || item.id,
@@ -403,6 +416,9 @@ const resolveSession = async (email, storeQuery) => {
   const session =
     (await Session.findOne({ shop: store, email })) || (await Session.findOne({ shop: store }));
   if (!session || !session.accessToken) throw new Error('Token missing; install Shopify app to access data');
+
+  console.log('access token', session.accessToken);
+  
   return { store, token: session.accessToken };
 };
 
@@ -531,38 +547,336 @@ app.post('/api/products/update', async (req, res) => {
   }
 });
 
-// Update order fulfillment status
+// Get line items for order (for fulfillment)
+app.post('/api/orders/get-line-items', async (req, res) => {
+  try {
+    const { email, store, orderId } = req.body;
+    if (!orderId) {
+      return res.status(400).json({ message: 'orderId is required' });
+    }
+    const { store: shop, token } = await resolveSession(email, store);
+
+    const query = `
+      query {
+        order(id: "${orderId}") {
+          id
+          lineItems(first: 250) {
+            edges {
+              node {
+                id
+                title
+                quantity
+                variant {
+                  id
+                  title
+                }
+              }
+            }
+          }
+        }
+      }
+    `;
+
+    const data = await shopifyQuery(shop, token, query);
+    const lineItems = [];
+
+    if (data?.order?.lineItems?.edges) {
+      for (const edge of data.order.lineItems.edges) {
+        const item = edge.node;
+        lineItems.push({
+          id: item.id,
+          title: item.title,
+          quantity: item.quantity,
+          variantId: item.variant?.id,
+          variantTitle: item.variant?.title,
+        });
+      }
+    }
+
+    res.json({ lineItems });
+  } catch (err) {
+    console.error('Get line items error', err);
+    res.status(500).json({ message: 'Failed to get line items' });
+  }
+});
+
+// Update order (cancel, close, or update fields)
 app.post('/api/orders/update', async (req, res) => {
   try {
-    const { email, store, orderId, status } = req.body;
-    if (!orderId || !status) {
-      return res.status(400).json({ message: 'orderId and status are required' });
+    const { email, store, orderId, action, ...params } = req.body;
+    if (!orderId || !action) {
+      return res.status(400).json({ message: 'orderId and action are required' });
     }
     const { store: shop, token } = await resolveSession(email, store);
 
     // Handle order cancellation
-    if (status === 'CANCELLED') {
+    if (action === 'CANCEL') {
+        // First, get all fulfillments for this order
+        const fulfillmentsQuery = `
+          query {
+            order(id: "${orderId}") {
+              id
+              fulfillments(first: 50) {
+                id
+                status
+              }
+            }
+          }
+        `;
+
+        const orderData = await shopifyQuery(shop, token, fulfillmentsQuery);
+        const fulfillments = orderData?.order?.fulfillments || [];
+
+        // Cancel all active fulfillments first
+        for (const fulfillment of fulfillments) {
+          if (fulfillment.status !== 'CANCELLED') {
+            try {
+              const cancelFulfillmentMutation = `
+                mutation fulfillmentCancel($id: ID!) {
+                  fulfillmentCancel(id: $id) {
+                    fulfillment {
+                      id
+                      status
+                    }
+                    userErrors {
+                      field
+                      message
+                    }
+                  }
+                }
+              `;
+              await shopifyMutation(shop, token, cancelFulfillmentMutation, { id: fulfillment.id });
+              console.log(`[ORDER CANCEL] Cancelled fulfillment ${fulfillment.id}`);
+            } catch (err) {
+              console.error(`[ORDER CANCEL] Failed to cancel fulfillment ${fulfillment.id}:`, err.message);
+              // Continue with other fulfillments even if one fails
+            }
+          }
+        }
+
+        // Now cancel the order
+        const mutation = `
+          mutation OrderCancel($orderId: ID!, $notifyCustomer: Boolean, $refund: Boolean!, $restock: Boolean!, $reason: OrderCancelReason!) {
+            orderCancel(orderId: $orderId, notifyCustomer: $notifyCustomer, refund: $refund, restock: $restock, reason: $reason) {
+              job { id done }
+              orderCancelUserErrors { field message code }
+              userErrors { field message }
+            }
+          }
+        `;
+
+        const variables = {
+          orderId,
+          notifyCustomer: params.notifyCustomer || false,
+          refund: Boolean(params?.refundMethod?.originalPaymentMethodsRefund) || false,
+          restock: params.restock !== undefined ? params.restock : true,
+          reason: params.reason || "CUSTOMER",
+        };
+
+        const data = await shopifyMutation(shop, token, mutation, variables);
+        const errors = data?.orderCancel?.orderCancelUserErrors || data?.orderCancel?.userErrors;
+        if (errors && errors.length) {
+          return res.status(400).json({ message: errors[0].message });
+        }
+        return res.json({ ok: true, message: 'Order and fulfillments cancelled successfully' });
+    }
+
+    // Handle order close
+    if (action === 'CLOSE') {
       const mutation = `
-        mutation orderCancel($orderId: ID!, $refund: Boolean!, $restock: Boolean!, $reason: OrderCancelReason!) {
-          orderCancel(orderId: $orderId, refund: $refund, restock: $restock, reason: $reason) {
-            userErrors { field message }
+        mutation OrderClose($input: OrderCloseInput!) {
+          orderClose(input: $input) {
+            order {
+              id
+              cancelReason
+              cancelledAt
+            }
+            userErrors {
+              field
+              message
+            }
           }
         }
       `;
       const data = await shopifyMutation(shop, token, mutation, {
-        orderId: orderId,
-        refund: false,
-        restock: true,
-        reason: "CUSTOMER",
+        input: { id: orderId }
       });
-      const errors = data?.orderCancel?.userErrors;
+      const errors = data?.orderClose?.userErrors;
       if (errors && errors.length) return res.status(400).json({ message: errors[0].message });
-      return res.json({ ok: true, message: 'Order cancelled successfully' });
+      return res.json({ ok: true, message: 'Order closed successfully' });
     }
 
-    // For other status changes, we would need fulfillment APIs
-    // For now, return a message
-    res.json({ ok: true, message: `Order status update to ${status} is not yet implemented` });
+    // Handle order update (shipping address, note, etc.)
+    if (action === 'UPDATE') {
+      const mutation = `
+        mutation OrderUpdate($input: OrderInput!) {
+          orderUpdate(input: $input) {
+            order {
+              id
+              note
+              shippingAddress {
+                address1
+                city
+                province
+                zip
+                country
+              }
+            }
+            userErrors {
+              field
+              message
+            }
+          }
+        }
+      `;
+      const input = { id: orderId };
+      if (params.note !== undefined) input.note = params.note;
+      if (params.shippingAddress) input.shippingAddress = params.shippingAddress;
+      
+      const data = await shopifyMutation(shop, token, mutation, { input });
+      const errors = data?.orderUpdate?.userErrors;
+      if (errors && errors.length) return res.status(400).json({ message: errors[0].message });
+      return res.json({ ok: true, message: 'Order updated successfully' });
+    }
+
+    // Handle order fulfillment
+    if (action === 'FULFILL') {
+      const lineItemIds = params.lineItemIds || [];
+      if (!lineItemIds || lineItemIds.length === 0) {
+        return res.status(400).json({ message: 'No line items selected for fulfillment' });
+      }
+
+      // First, fetch fulfillment orders to map line items to their fulfillment orders
+      const fulfillmentOrdersQuery = `
+        query {
+          order(id: "${orderId}") {
+            id
+            fulfillmentOrders(first: 10) {
+              edges {
+                node {
+                  id
+                  lineItems(first: 250) {
+                    edges {
+                      node {
+                        id
+                        remainingQuantity
+                        lineItem {
+                          id
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      `;
+
+      const foData = await shopifyQuery(shop, token, fulfillmentOrdersQuery);
+      
+      console.log('[FULFILLMENT DEBUG] Query result:', JSON.stringify(foData, null, 2));
+      
+      // Build lineItemsByFulfillmentOrder structure
+      const lineItemsByFulfillmentOrder = {};
+      
+      if (foData?.order?.fulfillmentOrders?.edges) {
+        for (const foEdge of foData.order.fulfillmentOrders.edges) {
+          const fo = foEdge.node;
+          const foId = fo.id;
+          
+          // Filter line items that match the selected IDs
+          const matchingItems = [];
+          if (fo.lineItems?.edges) {
+            for (const foLiEdge of fo.lineItems.edges) {
+              const foLi = foLiEdge.node;
+              // Check if this line item's original ID is in the selection
+              if (lineItemIds.includes(foLi.lineItem?.id)) {
+                console.log('[FULFILLMENT DEBUG] Matching item:', {
+                  id: foLi.id,
+                  remainingQuantity: foLi.remainingQuantity,
+                  lineItemId: foLi.lineItem?.id,
+                });
+                matchingItems.push({
+                  id: foLi.id,
+                  quantity: foLi.remainingQuantity,
+                });
+              }
+            }
+          }
+          
+          // Only add fulfillment order if it has matching items
+          if (matchingItems.length > 0) {
+            lineItemsByFulfillmentOrder[foId] = matchingItems;
+          }
+        }
+      }
+
+      console.log('[FULFILLMENT DEBUG] Final structure:', JSON.stringify(lineItemsByFulfillmentOrder, null, 2));
+
+      if (Object.keys(lineItemsByFulfillmentOrder).length === 0) {
+        return res.status(400).json({ message: 'Could not find fulfillment orders for selected items' });
+      }
+
+      // Shopify restriction: gift cards cannot be fulfilled with other items
+      // We need to fulfill each fulfillment order separately
+      const fulfillmentResults = [];
+      const fulfillmentErrors = [];
+
+      for (const [foId, lineItems] of Object.entries(lineItemsByFulfillmentOrder)) {
+        const mutation = `
+          mutation fulfillmentCreate($fulfillment: FulfillmentInput!) {
+            fulfillmentCreate(fulfillment: $fulfillment) {
+              fulfillment {
+                id
+                status
+              }
+              userErrors {
+                message
+                field
+              }
+            }
+          }
+        `;
+
+        const variables = {
+          fulfillment: {
+            lineItemsByFulfillmentOrder: [{
+              fulfillmentOrderId: foId,
+              fulfillmentOrderLineItems: lineItems,
+            }],
+          },
+        };
+
+        try {
+          const data = await shopifyMutation(shop, token, mutation, variables);
+          const errors = data?.fulfillmentCreate?.userErrors;
+          if (errors && errors.length) {
+            fulfillmentErrors.push(errors[0].message);
+          } else {
+            fulfillmentResults.push(data?.fulfillmentCreate?.fulfillment);
+          }
+        } catch (err) {
+          fulfillmentErrors.push(err.message);
+        }
+      }
+
+      if (fulfillmentErrors.length > 0 && fulfillmentResults.length === 0) {
+        // All failed
+        return res.status(400).json({ message: fulfillmentErrors.join('; ') });
+      } else if (fulfillmentErrors.length > 0) {
+        // Partial success
+        return res.json({ 
+          ok: true, 
+          message: `Partially fulfilled. ${fulfillmentResults.length} succeeded, ${fulfillmentErrors.length} failed: ${fulfillmentErrors.join('; ')}` 
+        });
+      } else {
+        // All succeeded
+        return res.json({ ok: true, message: 'Order fulfilled successfully' });
+      }
+    }
+
+    res.status(400).json({ message: 'Invalid action' });
   } catch (err) {
     console.error('Order update error', err);
     res.status(500).json({ message: 'Failed to update order' });

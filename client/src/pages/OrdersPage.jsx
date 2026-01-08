@@ -37,8 +37,9 @@ export default function OrdersPage() {
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState('');
   const [editDialog, setEditDialog] = useState({ open: false, row: null, store: null });
-  const [editForm, setEditForm] = useState({});
+  const [editForm, setEditForm] = useState({ action: '', shippingAddress: {}, lineItemsToFulfill: [] });
   const [viewDialog, setViewDialog] = useState({ open: false, order: null });
+  const [availableLineItems, setAvailableLineItems] = useState([]);
 
   useEffect(() => {
     if (authLoading) return;
@@ -78,28 +79,97 @@ export default function OrdersPage() {
 
   const openEdit = (row, store) => {
     setEditDialog({ open: true, row, store });
-    setEditForm({ status: row.status && row.status !== '—' ? row.status : '' });
+    setEditForm({ 
+      action: '', 
+      shippingAddress: {
+        firstName: '',
+        lastName: '',
+        address1: '',
+        city: '',
+        province: '',
+        zip: '',
+        country: ''
+      },
+      lineItemsToFulfill: []
+    });
+    setAvailableLineItems([]);
   };
 
   const openView = (order) => {
     setViewDialog({ open: true, order });
   };
 
+  const fetchLineItems = async (orderId) => {
+    try {
+      const { data } = await axios.post(`${API_URL}/api/orders/get-line-items`, {
+        email: user.email,
+        store: editDialog.store,
+        orderId,
+      });
+      setAvailableLineItems(data.lineItems || []);
+    } catch (err) {
+      console.error('Error fetching line items:', err);
+      setMessage('Failed to load line items');
+    }
+  };
+
+  const handleActionChange = (action) => {
+    setEditForm((f) => ({ ...f, action }));
+    if (action === 'FULFILL') {
+      fetchLineItems(editDialog.row.orderId);
+    }
+  };
+
   const handleEditSave = async () => {
     try {
-      await axios.post(`${API_URL}/api/orders/update`, {
+      const payload = {
         email: user.email,
         store: editDialog.store,
         orderId: editDialog.row.orderId,
-        status: editForm.status,
+        action: editForm.action,
+      };
+
+      if (editForm.action === 'CANCEL') {
+        payload.notifyCustomer = false;
+        payload.refundMethod = { originalPaymentMethodsRefund: false };
+        payload.restock = true;
+        payload.reason = "CUSTOMER";
+      } else if (editForm.action === 'UPDATE') {
+        const cleanedShipping = Object.entries(editForm.shippingAddress || {})
+          .filter(([, v]) => (v ?? '').toString().trim().length > 0)
+          .reduce((acc, [k, v]) => ({ ...acc, [k]: v }), {});
+        if (Object.keys(cleanedShipping).length > 0) {
+          // Shopify may require lastName when updating address; provide a fallback to avoid hard errors.
+          if (!cleanedShipping.lastName) cleanedShipping.lastName = 'Customer';
+          payload.shippingAddress = cleanedShipping;
+        }
+      } else if (editForm.action === 'FULFILL') {
+        if (editForm.lineItemsToFulfill.length === 0) {
+          setMessage('Please select at least one line item to fulfill');
+          return;
+        }
+        payload.lineItemIds = editForm.lineItemsToFulfill;
+      }
+
+      console.log('[OrdersPage] Saving order edit', {
+        orderId: payload.orderId,
+        action: payload.action,
+        shippingAddress: payload.shippingAddress,
+        store: payload.store,
       });
-      // Wait 2 seconds for Shopify to process the cancellation
+
+      const resp = await axios.post(`${API_URL}/api/orders/update`, payload);
       await new Promise(resolve => setTimeout(resolve, 2000));
       await fetchOrders();
       setEditDialog({ open: false, row: null, store: null });
-      setMessage('Order updated successfully');
+      setMessage(resp?.data?.message || 'Order updated successfully');
       setTimeout(() => setMessage(''), 3000);
     } catch (err) {
+      console.log('[OrdersPage] Update error', {
+        status: err?.response?.status,
+        data: err?.response?.data,
+        message: err?.message,
+      });
       setMessage(err?.response?.data?.message || 'Update failed');
     }
   };
@@ -416,9 +486,9 @@ export default function OrdersPage() {
             />
             <TextField
               select
-              label="Status"
-              value={editForm.status || ''}
-              onChange={(e) => setEditForm((f) => ({ ...f, status: e.target.value }))}
+              label="Action"
+              value={editForm.action || ''}
+              onChange={(e) => handleActionChange(e.target.value)}
               fullWidth
               sx={{
                 '& .MuiOutlinedInput-root': {
@@ -428,15 +498,154 @@ export default function OrdersPage() {
                 },
               }}
             >
-              {!editForm.status && <MenuItem value="">Select status</MenuItem>}
-              <MenuItem value="UNSHIPPED">Unshipped</MenuItem>
-              <MenuItem value="PARTIALLY_SHIPPED">Partially Shipped</MenuItem>
-              <MenuItem value="SHIPPED">Shipped</MenuItem>
-              <MenuItem value="PARTIALLY_FULFILLED">Partially Fulfilled</MenuItem>
-              <MenuItem value="FULFILLED">Fulfilled</MenuItem>
-              <MenuItem value="RESTOCKED">Restocked</MenuItem>
-              <MenuItem value="CANCELLED">Cancelled</MenuItem>
+              <MenuItem value="">Select action</MenuItem>
+              <MenuItem value="CANCEL">Cancel Order</MenuItem>
+              {/* <MenuItem value="CLOSE">Close Order</MenuItem> */}
+              <MenuItem value="FULFILL">Fulfill Order</MenuItem>
+              <MenuItem value="UPDATE">Update Order Details</MenuItem>
             </TextField>
+
+            {/* Fulfill Action Fields */}
+            {editForm.action === 'FULFILL' && (
+              <Box>
+                <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#4F5596', mb: 2 }}>
+                  Select Line Items to Fulfill
+                </Typography>
+                {availableLineItems.length > 0 ? (
+                  <Box sx={{ border: '1px solid #e0e0e0', borderRadius: 2, p: 2, maxHeight: 300, overflowY: 'auto' }}>
+                    {availableLineItems.map((item) => (
+                      <Box key={item.id} sx={{ display: 'flex', alignItems: 'center', mb: 1.5, pb: 1.5, borderBottom: '1px solid #f0f0f0', '&:last-child': { borderBottom: 'none' } }}>
+                        <input
+                          type="checkbox"
+                          id={item.id}
+                          checked={editForm.lineItemsToFulfill.includes(item.id)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setEditForm((f) => ({ ...f, lineItemsToFulfill: [...f.lineItemsToFulfill, item.id] }));
+                            } else {
+                              setEditForm((f) => ({ ...f, lineItemsToFulfill: f.lineItemsToFulfill.filter((id) => id !== item.id) }));
+                            }
+                          }}
+                          style={{ marginRight: 12 }}
+                        />
+                        <label htmlFor={item.id} style={{ flex: 1, cursor: 'pointer' }}>
+                          <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                            {item.title}
+                          </Typography>
+                          <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                            Quantity: {item.quantity}
+                          </Typography>
+                        </label>
+                      </Box>
+                    ))}
+                  </Box>
+                ) : (
+                  <Typography variant="body2" color="text.secondary" sx={{ p: 2, textAlign: 'center', border: '1px solid #e0e0e0', borderRadius: 2 }}>
+                    Loading line items...
+                  </Typography>
+                )}
+              </Box>
+            )}
+
+            {/* Update Action Fields */}
+            {editForm.action === 'UPDATE' && (
+              <>
+                <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#4F5596', mt: 1 }}>
+                  Update Shipping Address
+                </Typography>
+                <TextField
+                  label="First Name"
+                  value={editForm.shippingAddress.firstName}
+                  onChange={(e) => setEditForm((f) => ({ ...f, shippingAddress: { ...f.shippingAddress, firstName: e.target.value } }))}
+                  fullWidth
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      '&:hover fieldset': {
+                        borderColor: '#4F5596',
+                      },
+                    },
+                  }}
+                />
+                <TextField
+                  label="Last Name"
+                  value={editForm.shippingAddress.lastName}
+                  onChange={(e) => setEditForm((f) => ({ ...f, shippingAddress: { ...f.shippingAddress, lastName: e.target.value } }))}
+                  fullWidth
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      '&:hover fieldset': {
+                        borderColor: '#4F5596',
+                      },
+                    },
+                  }}
+                />
+                <TextField
+                  label="Address Line 1"
+                  value={editForm.shippingAddress.address1}
+                  onChange={(e) => setEditForm((f) => ({ ...f, shippingAddress: { ...f.shippingAddress, address1: e.target.value } }))}
+                  fullWidth
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      '&:hover fieldset': {
+                        borderColor: '#4F5596',
+                      },
+                    },
+                  }}
+                />
+                <TextField
+                  label="City"
+                  value={editForm.shippingAddress.city}
+                  onChange={(e) => setEditForm((f) => ({ ...f, shippingAddress: { ...f.shippingAddress, city: e.target.value } }))}
+                  fullWidth
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      '&:hover fieldset': {
+                        borderColor: '#4F5596',
+                      },
+                    },
+                  }}
+                />
+                <TextField
+                  label="Province/State"
+                  value={editForm.shippingAddress.province}
+                  onChange={(e) => setEditForm((f) => ({ ...f, shippingAddress: { ...f.shippingAddress, province: e.target.value } }))}
+                  fullWidth
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      '&:hover fieldset': {
+                        borderColor: '#4F5596',
+                      },
+                    },
+                  }}
+                />
+                <TextField
+                  label="Zip/Postal Code"
+                  value={editForm.shippingAddress.zip}
+                  onChange={(e) => setEditForm((f) => ({ ...f, shippingAddress: { ...f.shippingAddress, zip: e.target.value } }))}
+                  fullWidth
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      '&:hover fieldset': {
+                        borderColor: '#4F5596',
+                      },
+                    },
+                  }}
+                />
+                <TextField
+                  label="Country"
+                  value={editForm.shippingAddress.country}
+                  onChange={(e) => setEditForm((f) => ({ ...f, shippingAddress: { ...f.shippingAddress, country: e.target.value } }))}
+                  fullWidth
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      '&:hover fieldset': {
+                        borderColor: '#4F5596',
+                      },
+                    },
+                  }}
+                />
+              </>
+            )}
           </Stack>
         </DialogContent>
         <DialogActions sx={{ p: 2.5 }}>
@@ -444,10 +653,14 @@ export default function OrdersPage() {
           <Button
             variant="contained"
             onClick={handleEditSave}
+            disabled={!editForm.action}
             sx={{
               background: 'linear-gradient(180deg, #848FFC 16.67%, #4F5596 265.15%)',
               '&:hover': {
                 background: 'linear-gradient(180deg, #727AE8 16.67%, #40457C 265.15%)',
+              },
+              '&:disabled': {
+                background: '#ccc',
               },
             }}
           >
