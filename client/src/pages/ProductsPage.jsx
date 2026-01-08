@@ -113,6 +113,7 @@ export default function ProductsPage() {
         });
       }
 
+      await new Promise(resolve => setTimeout(resolve, 2000));
       await fetchProducts();
       setEditDialog({ open: false, row: null, store: null });
       setMessage('Product updated successfully');
