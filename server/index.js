@@ -424,6 +424,11 @@ const resolveSession = async (email, storeQuery) => {
 
 // Data fetch endpoint: finds stores from Users database and fetches data using Session tokens
 app.get('/api/data', async (req, res) => {
+  // Disable caching for this endpoint
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
+  
   try {
     const { email } = req.query;
     if (!email) {

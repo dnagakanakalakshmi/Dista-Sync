@@ -52,7 +52,7 @@ export default function ProductsPage() {
   const fetchProducts = async () => {
     try {
       const { data } = await axios.get(`${API_URL}/api/data`, {
-        params: { email: user.email },
+        params: { email: user.email, _t: Date.now() },
       });
       if (data.stores && data.stores.length > 0) {
         setStores(data.stores);
@@ -85,8 +85,14 @@ export default function ProductsPage() {
 
   const handleEditSave = async () => {
     try {
+      console.log('[ProductsPage] Starting product update', {
+        productId: editDialog.row.productId,
+        title: editForm.title,
+        price: editForm.price,
+      });
+
       // Update product title and price
-      await axios.post(`${API_URL}/api/products/update`, {
+      const updateResp = await axios.post(`${API_URL}/api/products/update`, {
         email: user.email,
         store: editDialog.store,
         productId: editDialog.row.productId,
@@ -94,6 +100,8 @@ export default function ProductsPage() {
         title: editForm.title,
         price: editForm.price,
       });
+      
+      console.log('[ProductsPage] Product update response:', updateResp.data);
 
       // Update inventory if changed and inventoryItemId exists
       if (
@@ -103,7 +111,12 @@ export default function ProductsPage() {
         editDialog.row.locationId &&
         editForm.inventory !== editDialog.row.inventory
       ) {
-        await axios.post(`${API_URL}/api/inventory/update`, {
+        console.log('[ProductsPage] Updating inventory', {
+          itemId: editDialog.row.inventoryItemId,
+          newQty: editForm.inventory,
+        });
+
+        const invResp = await axios.post(`${API_URL}/api/inventory/update`, {
           email: user.email,
           store: editDialog.store,
           itemId: editDialog.row.inventoryItemId,
@@ -111,14 +124,22 @@ export default function ProductsPage() {
           newQty: Number(editForm.inventory),
           currentQty: Number(editDialog.row.inventory === '—' ? 0 : editDialog.row.inventory),
         });
+        
+        console.log('[ProductsPage] Inventory update response:', invResp.data);
       }
 
+      console.log('[ProductsPage] Waiting 2 seconds before refetch...');
       await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      console.log('[ProductsPage] Fetching updated products...');
       await fetchProducts();
+      
+      console.log('[ProductsPage] Products fetched after update');
       setEditDialog({ open: false, row: null, store: null });
       setMessage('Product updated successfully');
       setTimeout(() => setMessage(''), 3000);
     } catch (err) {
+      console.error('[ProductsPage] Error during save:', err);
       setMessage(err?.response?.data?.message || 'Update failed');
     }
   };
@@ -152,23 +173,42 @@ export default function ProductsPage() {
             >
               ← Back to Home
             </Button>
-            <Button
-              variant="outlined"
-              onClick={() => {
-                logout();
-                navigate('/login');
-              }}
-              sx={{
-                borderColor: '#4F5596',
-                color: '#4F5596',
-                '&:hover': {
+            <Box sx={{ display: 'flex', gap: 1 }}>
+              <Button
+                variant="outlined"
+                onClick={() => {
+                  setLoading(true);
+                  fetchProducts();
+                }}
+                sx={{
                   borderColor: '#4F5596',
-                  background: '#f2f3ff',
-                },
-              }}
-            >
-              Logout
-            </Button>
+                  color: '#4F5596',
+                  '&:hover': {
+                    borderColor: '#4F5596',
+                    background: '#f2f3ff',
+                  },
+                }}
+              >
+                Refresh
+              </Button>
+              <Button
+                variant="outlined"
+                onClick={() => {
+                  logout();
+                  navigate('/login');
+                }}
+                sx={{
+                  borderColor: '#4F5596',
+                  color: '#4F5596',
+                  '&:hover': {
+                    borderColor: '#4F5596',
+                    background: '#f2f3ff',
+                  },
+                }}
+              >
+                Logout
+              </Button>
+            </Box>
           </Box>
 
           {/* Message Alert */}
