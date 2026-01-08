@@ -52,7 +52,7 @@ export default function InventoryPage() {
   const fetchInventory = async () => {
     try {
       const { data } = await axios.get(`${API_URL}/api/data`, {
-        params: { email: user.email, _t: Date.now() },
+        params: { email: user.email },
       });
       if (data.stores && data.stores.length > 0) {
         setStores(data.stores);
