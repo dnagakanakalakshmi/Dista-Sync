@@ -29,7 +29,7 @@ import LoadingSpinner from '../components/LoadingSpinner';
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 export default function OrdersPage() {
-  const { user, logout, isLoading: authLoading, isEmbedded } = useAuth();
+  const { user, logout, isLoading: authLoading, isEmbedded, embedShop } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [stores, setStores] = useState([]);
@@ -58,10 +58,17 @@ export default function OrdersPage() {
         params: { email: user.email, _t: Date.now() },
       });
       if (data.stores && data.stores.length > 0) {
-        setStores(data.stores);
+        let stores = data.stores;
+        
+        // Filter stores if embedded and shop parameter is provided
+        if (isEmbedded && embedShop) {
+          stores = stores.filter(s => s.shop === embedShop);
+        }
+        
+        setStores(stores);
         const storeParam = searchParams.get('store');
         if (storeParam) {
-          const idx = data.stores.findIndex((s) => s.shop === storeParam);
+          const idx = stores.findIndex((s) => s.shop === storeParam);
           setSelectedStore(idx >= 0 ? idx : 0);
         }
       } else {

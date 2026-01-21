@@ -29,7 +29,7 @@ import LoadingSpinner from '../components/LoadingSpinner';
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 export default function HomePage() {
-  const { user, logout, isLoading: authLoading, isEmbedded } = useAuth();
+  const { user, logout, isLoading: authLoading, isEmbedded, embedShop } = useAuth();
   const navigate = useNavigate();
   const [hasToken, setHasToken] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -53,7 +53,13 @@ export default function HomePage() {
           params: { email: user.email },
         });
 
-        const stores = data.stores || [];
+        let stores = data.stores || [];
+        
+        // Filter stores if embedded and shop parameter is provided
+        if (isEmbedded && embedShop) {
+          stores = stores.filter(s => s.shop === embedShop);
+        }
+        
         const countsAgg = stores.reduce(
           (acc, s) => ({
             orders: acc.orders + (s.orders?.length || 0),
@@ -92,7 +98,7 @@ export default function HomePage() {
     };
 
     checkToken();
-  }, [user, navigate, authLoading]);
+  }, [user, navigate, authLoading, isEmbedded, embedShop]);
 
   if (authLoading || loading) {
     return (

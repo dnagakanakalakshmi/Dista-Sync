@@ -15,9 +15,15 @@ export const AuthProvider = ({ children }) => {
   const [isLoading, setIsLoading] = useState(true);
   
   // Check if app is embedded (via source=embedded_app parameter)
-  const isEmbedded = useMemo(() => {
+  // and get the specific shop if provided
+  const { isEmbedded, embedShop } = useMemo(() => {
     const urlParams = new URLSearchParams(window.location.search);
-    return urlParams.get('source') === 'embedded_app';
+    const source = urlParams.get('source');
+    const shop = urlParams.get('shop');
+    return {
+      isEmbedded: source === 'embedded_app',
+      embedShop: source === 'embedded_app' ? shop : null
+    };
   }, []);
 
   useEffect(() => {
@@ -43,7 +49,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, isLoading, isEmbedded }}>
+    <AuthContext.Provider value={{ user, login, logout, isLoading, isEmbedded, embedShop }}>
       {children}
     </AuthContext.Provider>
   );
