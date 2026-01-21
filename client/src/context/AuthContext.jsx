@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState, useEffect, useMemo } from 'react';
 
 const AuthContext = createContext();
 
@@ -13,6 +13,12 @@ export const useAuth = () => {
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  
+  // Check if app is embedded (via source=embedded_app parameter)
+  const isEmbedded = useMemo(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    return urlParams.get('source') === 'embedded_app';
+  }, []);
 
   useEffect(() => {
     const stored = localStorage.getItem('user');
@@ -37,7 +43,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, isLoading }}>
+    <AuthContext.Provider value={{ user, login, logout, isLoading, isEmbedded }}>
       {children}
     </AuthContext.Provider>
   );

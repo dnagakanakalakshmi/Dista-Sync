@@ -29,7 +29,7 @@ import LoadingSpinner from '../components/LoadingSpinner';
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 export default function HomePage() {
-  const { user, logout, isLoading: authLoading } = useAuth();
+  const { user, logout, isLoading: authLoading, isEmbedded } = useAuth();
   const navigate = useNavigate();
   const [hasToken, setHasToken] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -106,26 +106,28 @@ export default function HomePage() {
     <Box className="app-shell" sx={{ minHeight: '100vh', pb: 4 }}>
       <Container maxWidth="lg">
         <Stack spacing={4}>
-          {/* Header with Logout */}
-          <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
-            <Button
-              variant="outlined"
-              onClick={() => {
-                logout();
-                navigate('/login');
-              }}
-              sx={{
-                borderColor: '#4F5596',
-                color: '#4F5596',
-                '&:hover': {
+          {/* Header with Logout - Hidden when embedded */}
+          {!isEmbedded && (
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <Button
+                variant="outlined"
+                onClick={() => {
+                  logout();
+                  navigate('/login');
+                }}
+                sx={{
                   borderColor: '#4F5596',
-                  background: '#f2f3ff',
-                },
-              }}
-            >
-              Logout
-            </Button>
-          </Box>
+                  color: '#4F5596',
+                  '&:hover': {
+                    borderColor: '#4F5596',
+                    background: '#f2f3ff',
+                  },
+                }}
+              >
+                Logout
+              </Button>
+            </Box>
+          )}
 
           {/* Welcome Banner */}
           <WelcomeBanner email={user?.email || ''} shops={shops} />

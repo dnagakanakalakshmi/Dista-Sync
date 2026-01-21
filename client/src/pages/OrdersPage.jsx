@@ -29,7 +29,7 @@ import LoadingSpinner from '../components/LoadingSpinner';
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 export default function OrdersPage() {
-  const { user, logout, isLoading: authLoading } = useAuth();
+  const { user, logout, isLoading: authLoading, isEmbedded } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [stores, setStores] = useState([]);
@@ -203,23 +203,25 @@ export default function OrdersPage() {
             >
               ← Back to Home
             </Button>
-            <Button
-              variant="outlined"
-              onClick={() => {
-                logout();
-                navigate('/login');
-              }}
-              sx={{
-                    borderColor: '#4F5596',
-                    color: '#4F5596',
-                    '&:hover': {
+            {!isEmbedded && (
+              <Button
+                variant="outlined"
+                onClick={() => {
+                  logout();
+                  navigate('/login');
+                }}
+                sx={{
                       borderColor: '#4F5596',
-                      background: '#f2f3ff',
-                    },
-              }}
-            >
-              Logout
-            </Button>
+                      color: '#4F5596',
+                      '&:hover': {
+                        borderColor: '#4F5596',
+                        background: '#f2f3ff',
+                      },
+                }}
+              >
+                Logout
+              </Button>
+            )}
           </Box>
 
           {/* Message Alert */}
