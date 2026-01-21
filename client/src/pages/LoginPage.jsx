@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -19,12 +19,24 @@ import DistaLogo from '../assets/dista-logo.png';
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 export default function LoginPage() {
-  const { login } = useAuth();
+  const { login, isEmbedded, user } = useAuth();
   const navigate = useNavigate();
   const [mode, setMode] = useState('login');
   const [form, setForm] = useState({ email: '', password: '' });
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
+
+  // Redirect embedded app users to home immediately
+  useEffect(() => {
+    if (isEmbedded && user) {
+      navigate('/home');
+    }
+  }, [isEmbedded, user, navigate]);
+
+  // Don't render login form for embedded apps
+  if (isEmbedded) {
+    return null;
+  }
 
   const handleChange = (e) => {
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));

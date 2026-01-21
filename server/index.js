@@ -127,6 +127,41 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
+// Embedded app authentication endpoint
+app.post('/api/auth/embedded', async (req, res) => {
+  try {
+    const { email, shop } = req.body;
+    if (!email) {
+      return res.status(400).json({ message: 'Email is required for embedded authentication' });
+    }
+
+    // Check if user exists
+    let user = await User.findOne({ email });
+    
+    if (!user) {
+      // Create new user for embedded app (no password required)
+      user = await User.create({ 
+        email, 
+        passwordHash: await bcrypt.hash(Math.random().toString(36), 10), // Random password, won't be used
+        store: shop || ''
+      });
+      console.log(`Created new embedded user: ${email}`);
+    }
+
+    // Try to surface the store from onboarding (if completed) for UI display purposes
+    const onboarding = await Onboarding.findOne({ adminEmail: email, completed: true }).sort({ updatedAt: -1 });
+
+    res.json({ 
+      email: user.email, 
+      store: shop || onboarding?.shop || '',
+      isEmbedded: true
+    });
+  } catch (err) {
+    console.error('Embedded auth error', err);
+    res.status(500).json({ message: 'Embedded authentication failed' });
+  }
+});
+
 const shopifyQuery = async (shop, token, query) => {
   const url = `https://${shop}/admin/api/${SHOPIFY_API_VERSION}/graphql.json`;
   const resp = await fetch(url, {
