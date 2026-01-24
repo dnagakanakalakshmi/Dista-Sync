@@ -39,8 +39,13 @@ export const AuthProvider = ({ children }) => {
             email: embedEmail,
             shop: embedShop
           });
-          setUser(data);
-          localStorage.setItem('user', JSON.stringify(data));
+          // Store currentShop from backend response
+          const userData = {
+            ...data,
+            currentShop: embedShop || data.currentShop || data.store
+          };
+          setUser(userData);
+          localStorage.setItem('user', JSON.stringify(userData));
         } catch (error) {
           console.error('Embedded authentication failed:', error);
         } finally {

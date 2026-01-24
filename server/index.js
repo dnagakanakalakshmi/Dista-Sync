@@ -77,6 +77,47 @@ app.use(express.json());
 // Health check
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 
+// Debug endpoint to check user data
+app.get('/api/debug/user', async (req, res) => {
+  try {
+    const { email } = req.query;
+    if (!email) {
+      return res.status(400).json({ message: 'Email is required' });
+    }
+
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    const sessions = await Session.find({ email });
+    const onboardings = await Onboarding.find({ adminEmail: email });
+
+    res.json({
+      user: {
+        email: user.email,
+        store: user.store,
+        stores: user.stores,
+        createdAt: user.createdAt
+      },
+      sessions: sessions.map(s => ({
+        shop: s.shop,
+        email: s.email,
+        hasToken: !!s.accessToken,
+        isOnline: s.isOnline
+      })),
+      onboardings: onboardings.map(o => ({
+        shop: o.shop,
+        completed: o.completed,
+        updatedAt: o.updatedAt
+      }))
+    });
+  } catch (err) {
+    console.error('Debug user error', err);
+    res.status(500).json({ message: 'Failed to fetch debug info' });
+  }
+});
+
 // Registration endpoint
 app.post('/api/auth/register', async (req, res) => {
   try {
@@ -135,29 +176,64 @@ app.post('/api/auth/embedded', async (req, res) => {
       return res.status(400).json({ message: 'Email is required for embedded authentication' });
     }
 
+    console.log(`[EMBEDDED AUTH] Email: ${email}, Shop: ${shop}`);
+
     // Check if user exists
     let user = await User.findOne({ email });
     
     if (!user) {
       // Create new user for embedded app (no password required)
+      const storesArray = shop ? [shop] : [];
       user = await User.create({ 
         email, 
         passwordHash: await bcrypt.hash(Math.random().toString(36), 10), // Random password, won't be used
-        store: shop || ''
+        store: shop || '',
+        stores: storesArray
       });
-      console.log(`Created new embedded user: ${email}`);
+      console.log(`[EMBEDDED AUTH] Created new user: ${email} with stores: ${JSON.stringify(storesArray)}`);
+    } else if (shop) {
+      // User exists - update stores array if this shop isn't already included
+      let userStores = [];
+      if (Array.isArray(user.stores)) {
+        userStores = user.stores;
+      } else if (user.stores) {
+        try {
+          userStores = JSON.parse(user.stores);
+        } catch (err) {
+          console.error('[EMBEDDED AUTH] Error parsing user.stores:', err);
+          userStores = [];
+        }
+      } else if (user.store) {
+        // Migrate from old single store format
+        userStores = [user.store];
+      }
+
+      // Add shop to stores array if not already present
+      if (!userStores.includes(shop)) {
+        userStores.push(shop);
+        await User.updateOne({ email }, { $set: { stores: userStores, store: shop } });
+        console.log(`[EMBEDDED AUTH] Added shop ${shop} to user ${email}. Total stores: ${userStores.length} - ${JSON.stringify(userStores)}`);
+      } else {
+        console.log(`[EMBEDDED AUTH] Shop ${shop} already exists for user ${email}. Total stores: ${userStores.length}`);
+      }
     }
 
-    // Try to surface the store from onboarding (if completed) for UI display purposes
-    const onboarding = await Onboarding.findOne({ adminEmail: email, completed: true }).sort({ updatedAt: -1 });
+    // Check if there's a valid session for this shop
+    const session = shop ? (await Session.findOne({ shop, email })) || (await Session.findOne({ shop })) : null;
+    if (session) {
+      console.log(`[EMBEDDED AUTH] Found session for shop ${shop}`);
+    } else {
+      console.log(`[EMBEDDED AUTH] No session found for shop ${shop} - app may not be installed`);
+    }
 
     res.json({ 
       email: user.email, 
-      store: shop || onboarding?.shop || '',
+      store: shop || user.store || '',
+      currentShop: shop, // Pass current shop explicitly
       isEmbedded: true
     });
   } catch (err) {
-    console.error('Embedded auth error', err);
+    console.error('[EMBEDDED AUTH] Error:', err);
     res.status(500).json({ message: 'Embedded authentication failed' });
   }
 });
@@ -509,9 +585,11 @@ app.get('/api/data', async (req, res) => {
           (await Session.findOne({ shop: store }));
 
         if (!session || !session.accessToken) {
-          console.warn(`Token missing for store ${store}, skipping`);
+          console.warn(`[DATA] Token missing for store ${store}, skipping`);
           continue;
         }
+
+        console.log(`[DATA] Fetching Shopify data for store: ${store}`);
 
         // Fetch Shopify data for this store
         const shopifyData = await fetchShopifyData(store, session.accessToken);
@@ -524,11 +602,14 @@ app.get('/api/data', async (req, res) => {
           products: shopifyData.products || [],
           inventory: shopifyData.inventory || [],
         });
+        
+        console.log(`[DATA] Successfully fetched data for ${store}: ${shopifyData.orders?.length || 0} orders, ${shopifyData.products?.length || 0} products`);
       } catch (err) {
-        console.error(`Error fetching data for store ${store}:`, err);
+        console.error(`[DATA] Error fetching data for store ${store}:`, err);
       }
     }
 
+    console.log(`[DATA] Returning data for ${stores.length} stores to user ${email}`);
     res.json({ stores });
   } catch (err) {
     console.error('Data fetch error', err);
